@@ -12,9 +12,19 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "@whiskeysockets/baileys": "^6.7.9",
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.24",
+    "apify-client": "^2.12.0",
+    "nextcloud-link": "^1.2.9",
+    "playwright": "^1.50.1",
     "qrcode-terminal": "^0.12.0",
+    "tesseract.js": "^6.0.0",
     "ts-node-dev": "^2.0.0",
-    "urip-getcontact": "github:subekti404dev/urip-getcontact"
+    "twitter-api-v2": "^1.20.0",
+    "urip-getcontact": "github:subekti404dev/urip-getcontact",
+    "webdav": "^5.8.0"
+  },
+  "devDependencies": {
+    "@types/qrcode-terminal": "^0.12.2"
   }
 }

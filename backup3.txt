@@ -1,0 +1,188 @@
+// import makeWASocket, {
+//   DisconnectReason,
+//   useMultiFileAuthState,
+//   downloadMediaMessage,
+// } from "@whiskeysockets/baileys";
+// import { Boom } from "@hapi/boom";
+// const { GoogleGenerativeAI } = require("@google/generative-ai");
+// import axios from "axios";
+// import {writeFile, mkdir} from 'fs/promises';
+// import pino from "pino"; 
+// import fs from 'fs';
+// import { get } from "http";
+// import NextcloudClient from 'nextcloud-link';
+// import Tesseract from 'tesseract.js';
+
+// const path = require('path');
+// const logger = pino({ level: "info" });
+// const apiKey = new GoogleGenerativeAI("AIzaSyBSLzrtC9xcwWbGTZszY6SiQ8KOh0sU3Cg");
+// const simsimiKey = "kzZc23~HsBx8J7sgD130oXnTgrZjScgv_kUdoD8c";
+// const conversations = new Map();
+
+// function updateConversation(remoteJid, userMessage, botResponse){
+//   if(!conversations.has(remoteJid)){
+//     conversations.set(remoteJid, []);
+//   }
+//   const chatHistory = conversations.get(remoteJid);
+//   chatHistory.push({ role: "user", message: userMessage});
+//   chatHistory.push({ role: "bot", message: botResponse});
+//   conversations.set(remoteJid, chatHistory);
+// }
+
+// async function getBotResponse(remoteJid, userMessage, service) {
+//   const chatHistory = conversations.get(remoteJid) || [];
+//   const prompt = chatHistory
+//   .map(entry => `${entry.role}: ${entry.message}`)
+//   .join("\n") + `\nuser: ${userMessage}`;
+
+//   let botResponse = "";
+
+//   try {
+//     if(service === "gemini"){
+//       const model = apiKey.getGenerativeModel({ model: "gemini-1.5-flash"});
+//       const result = await model.generateContent(prompt);
+//       botResponse = result.response.text();
+//     }else if(service === "simsimi"){
+//       botResponse = await getResponseSimSimi(userMessage);
+//     }
+
+    
+//   } catch (error) {
+//     logger.error("Error pada request gemini:", error);
+//     return "bad request";
+//   }
+
+//   updateConversation(remoteJid, userMessage, botResponse);
+//     return botResponse.replace(/^Bot:\s*/, "");
+// }
+
+// async function getResponseSimSimi(prompt) {
+//   try {
+//     const response = await axios.post(
+//       "https://wsapi.simsimi.com/190410/talk",
+//       {
+//         utext: prompt,
+//         lang: "id"
+//       },{
+//         headers: {
+//           "Content-Type": "application/json",
+//           "x-api-key": simsimiKey
+//         }
+//       }
+//     );
+//     return response.data.atext
+//   } catch (error) {
+//     console.error("bad request: ", error)
+//   }
+// }
+// const config = {
+//   url: 'https://nextcloud.putrawork.web.id',
+//   username: 'admin',
+//   password: 'Whoami12#e',
+// };
+// const client = new NextcloudClient(config);
+
+// const localFolderPath = path.join(__dirname, 'videos');
+// const remoteBasePath = '/videos/';
+
+// async function createFolder(remoteFolderPath: string) {
+//   try {
+//     if (!remoteFolderPath.endsWith('/')) {
+//       remoteFolderPath += '/';
+//     }
+//     await client.createFolderHierarchy(remoteFolderPath);
+//     console.log(`Folder ${remoteFolderPath} berhasil dibuat!`);
+//   } catch (error) {
+//     console.error(`Gagal membuat folder ${remoteFolderPath}:`, error);
+//   }
+// }
+
+// async function uploadFileToNextcloud(localFilePath: string, remoteFilePath: string) {
+//   try {
+//     const fileBuffer = fs.readFileSync(localFilePath);
+//     await client.put(remoteFilePath, fileBuffer);
+//     console.log(`File berhasil diupload: ${remoteFilePath}`);
+//   } catch (error) {
+//     console.error(`Gagal mengupload file ${remoteFilePath}:`, error);
+//   }
+// }
+
+// async function fetchTwitterVideos(tweetUrl) {
+//   try {
+//     const response = await axios.get("https://api.ryzendesu.vip/api/downloader/twitter", {
+//       params: { url: tweetUrl },
+//     });
+
+//     if (!response.data.media || response.data.media.length === 0) {
+//       console.error("No videos found.");
+//       return null;
+//     }
+
+//     return response.data.media;
+//   } catch (error) {
+//     console.error("API fetch error:", error.message);
+//     return null;
+//   }
+// }
+
+// function extractUsernameFromUrl(url) {
+//   const match = url.match(/x.com\/(.*?)\/status/);
+//   return match ? match[1] : "unknown_user";
+// }
+
+// async function downloadAndUploadVideo(url, folderName, filename) {
+//   const folderPath = path.join(localFolderPath, folderName);
+//   if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+
+//   const filePath = path.join(folderPath, filename);
+//   const writer = fs.createWriteStream(filePath);
+
+//   try {
+//     const response = await axios({ url, method: "GET", responseType: "stream" });
+//     response.data.pipe(writer);
+
+//     await new Promise<void>((resolve, reject) => {
+//       writer.on("finish", () => resolve());
+//       writer.on("error", reject);
+//     });
+
+//     console.log(`✅ Download selesai: ${filePath}`);
+
+//     // Buat folder di Nextcloud jika belum ada
+//     const remoteFolderPath = path.join(remoteBasePath, folderName).replace(/\\/g, '/');
+//     await createFolder(remoteFolderPath);
+
+//     // Upload ke Nextcloud
+//     const remoteFilePath = path.join(remoteFolderPath, filename).replace(/\\/g, '/');
+//     await uploadFileToNextcloud(filePath, remoteFilePath);
+//     console.log(`✅ Upload selesai: ${remoteFilePath}`);
+
+//     // Hapus file setelah berhasil upload
+//     fs.unlinkSync(filePath);
+//     console.log(`🗑️ File lokal dihapus: ${filePath}`);
+
+//     return remoteFilePath;
+//   } catch (error) {
+//     console.error("Download atau upload error:", error.message);
+//   }
+// }
+
+// Tesseract.recognize(
+//   'test.jpg',
+//   'ind',
+//   { logger: m => console.log(m) }
+// ).then(({ data: { text } }) => {
+
+//   const match = text.match(/Petunjuk Arah.*?\n([\s\S]*?)\nDetail Pesanan/);
+  
+//   if (match && match[1]) {
+//       let hasil = match[1].trim();
+//       hasil = hasil.replace(/^\|+/, "");
+//       hasil = hasil.replace(/^\s*O(\s|,)/, "").trim();
+//       console.log(hasil);
+//   } else {
+//       console.log("Teks tidak ditemukan.");
+//   }
+// }).catch(error => {
+//   console.error("Error:", error);
+// });
