@@ -3,207 +3,128 @@ import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
-
 import { Boom } from "@hapi/boom";
+import express, { Request, Response } from "express";
 import qrcode from "qrcode-terminal";
 
+const PORT = Number(process.env.WHATSAPP_BOT_PORT || 3001);
+const TOKEN = process.env.WHATSAPP_BOT_TOKEN;
+const SESSION_DIR = process.env.WHATSAPP_SESSION_DIR || "session";
 
-// ======================================================
-// NOMOR TUJUAN
-// ======================================================
+type SendRequestBody = {
+  phone?: string;
+  message?: string;
+};
 
-const TARGET_NUMBER = "62895391518953@s.whatsapp.net";
+let sock: ReturnType<typeof makeWASocket> | undefined;
+let connectionState: "close" | "connecting" | "open" = "close";
+let reconnectTimer: NodeJS.Timeout | undefined;
 
+function normalizePhoneNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
 
-// ======================================================
-// CONNECT WHATSAPP
-// ======================================================
+  return digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
+}
 
-async function connectToWhatsApp() {
+async function connectToWhatsApp(): Promise<void> {
+  const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
 
-  const {
-    state,
-    saveCreds,
-  } = await useMultiFileAuthState("session");
-
-
-  const sock = makeWASocket({
+  connectionState = "connecting";
+  sock = makeWASocket({
     auth: state,
-
-    // Jangan gunakan printQRInTerminal
-    // karena sudah deprecated
     printQRInTerminal: false,
-
-    browser: [
-      "Ubuntu",
-      "Chrome",
-      "22.04.4",
-    ],
+    browser: ["Ubuntu", "Chrome", "22.04.4"],
   });
 
 
-  // ====================================================
-  // SAVE LOGIN SESSION
-  // ====================================================
+  sock.ev.on("creds.update", saveCreds);
+  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      console.log("Scan QR code berikut dengan WhatsApp:");
+      qrcode.generate(qr, { small: true });
+    }
 
-  sock.ev.on(
-    "creds.update",
-    saveCreds
-  );
+    if (connection === "open") {
+      connectionState = "open";
+      console.log("WhatsApp berhasil terhubung.");
+    }
 
+    if (connection === "close") {
+      connectionState = "close";
+      sock = undefined;
 
-  // ====================================================
-  // CONNECTION UPDATE
-  // ====================================================
+      const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-  sock.ev.on(
-    "connection.update",
-    async (update) => {
+      console.error(`Koneksi WhatsApp tertutup. Status: ${statusCode || "unknown"}`);
 
-      const {
-        connection,
-        lastDisconnect,
-        qr,
-      } = update;
-
-
-      // =================================================
-      // QR CODE
-      // =================================================
-
-      if (qr) {
-
-        console.log("");
-        console.log(
-          "=============================================="
-        );
-
-        console.log(
-          "📱 SCAN QR CODE DENGAN WHATSAPP"
-        );
-
-        console.log(
-          "=============================================="
-        );
-
-        console.log("");
-
-
-        qrcode.generate(
-          qr,
-          {
-            small: true,
-          }
-        );
+      if (shouldReconnect && !reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = undefined;
+          connectToWhatsApp().catch((error) => {
+            console.error("Gagal reconnect ke WhatsApp:", error);
+          });
+        }, 3000);
       }
 
-
-      // =================================================
-      // CONNECTED
-      // =================================================
-
-      if (connection === "open") {
-
-        console.log("");
-        console.log(
-          "=============================================="
-        );
-
-        console.log(
-          "✅ WHATSAPP BERHASIL TERHUBUNG"
-        );
-
-        console.log(
-          "=============================================="
-        );
-
-        console.log("");
-
-
-        try {
-
-          await sock.sendMessage(
-            TARGET_NUMBER,
-            {
-              text: "hello",
-            }
-          );
-
-
-          console.log(
-            `✅ Pesan "hello" berhasil dikirim ke ${TARGET_NUMBER}`
-          );
-
-
-        } catch (error) {
-
-          console.error(
-            "❌ Gagal mengirim pesan:",
-            error
-          );
-        }
-      }
-
-
-      // =================================================
-      // CONNECTION CLOSED
-      // =================================================
-
-      if (connection === "close") {
-
-        const statusCode =
-          (lastDisconnect?.error as Boom)
-            ?.output?.statusCode;
-
-
-        console.log("");
-        console.log(
-          "❌ WhatsApp connection closed"
-        );
-
-        console.log(
-          "Status code:",
-          statusCode
-        );
-
-
-        const shouldReconnect =
-          statusCode !==
-          DisconnectReason.loggedOut;
-
-
-        if (shouldReconnect) {
-
-          console.log(
-            "🔄 Mencoba reconnect dalam 3 detik..."
-          );
-
-
-          setTimeout(() => {
-
-            connectToWhatsApp();
-
-          }, 3000);
-
-
-        } else {
-
-          console.log(
-            "❌ Session WhatsApp sudah logout."
-          );
-
-          console.log(
-            "Hapus folder session kemudian jalankan kembali."
-          );
-        }
+      if (!shouldReconnect) {
+        console.error("Session WhatsApp logout. Hapus folder session lalu jalankan ulang.");
       }
     }
-  );
+  });
 }
 
+const app = express();
+app.use(express.json({ limit: "16kb" }));
 
-// ======================================================
-// START
-// ======================================================
+app.get("/health", (_request: Request, response: Response) => {
+  response.json({ connected: connectionState === "open" });
+});
 
-connectToWhatsApp();
+app.post(
+  "/send",
+  async (
+    request: Request<Record<string, never>, unknown, SendRequestBody>,
+    response: Response,
+  ) => {
+    if (!TOKEN || request.headers.authorization !== `Bearer ${TOKEN}`) {
+      response.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const phone = request.body.phone?.trim();
+    const message = request.body.message?.trim();
+    const normalizedPhone = phone ? normalizePhoneNumber(phone) : "";
+
+    if (!normalizedPhone || !message) {
+      response.status(422).json({ message: "phone dan message wajib diisi." });
+      return;
+    }
+
+    if (connectionState !== "open" || !sock) {
+      response.status(503).json({ message: "WhatsApp belum terhubung." });
+      return;
+    }
+
+    try {
+      await sock.sendMessage(`${normalizedPhone}@s.whatsapp.net`, { text: message });
+      response.json({ sent: true });
+    } catch (error) {
+      console.error("Gagal mengirim pesan WhatsApp:", error);
+      response.status(502).json({ message: "Gagal mengirim pesan WhatsApp." });
+    }
+  },
+);
+
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`WhatsApp bot API berjalan di http://127.0.0.1:${PORT}`);
+});
+
+if (!TOKEN) {
+  console.error("WHATSAPP_BOT_TOKEN belum diatur.");
+}
+
+connectToWhatsApp().catch((error) => {
+  console.error("Gagal memulai WhatsApp bot:", error);
+  process.exitCode = 1;
+});

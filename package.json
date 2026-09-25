@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "ts-node-dev index.ts"
+    "start": "tsx index.ts"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +15,7 @@
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^6.7.24",
     "apify-client": "^2.12.0",
+    "express": "^5.2.1",
     "nextcloud-link": "^1.2.9",
     "playwright": "^1.50.1",
     "qrcode-terminal": "^0.12.0",
@@ -25,6 +26,9 @@
     "webdav": "^5.8.0"
   },
   "devDependencies": {
-    "@types/qrcode-terminal": "^0.12.2"
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.21",
+    "@types/qrcode-terminal": "^0.12.2",
+    "tsx": "^4.19.4"
   }
 }
